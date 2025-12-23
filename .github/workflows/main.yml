@@ -1,12 +1,12 @@
 name: Direct Build and Release Full Boost 1.90.0 (Tag: boostO)
 
 on:
-  workflow_dispatch:  # Strongly recommended for controlled release management
+  workflow_dispatch:
   push:
     branches: [ main ]
 
 permissions:
-  contents: write  # Required for tag creation, release management, and asset upload
+  contents: write
 
 jobs:
   build-and-release:
@@ -36,7 +36,7 @@ jobs:
           path: |
             ~/boost-boost-1.90.0
             ~/boost-install
-          key: boost-1.90.0-github-${{ runner.os }}-${{ hashFiles('**/direct-release-boostO.yml') }}
+          key: boost-1.90.0-github-${{ runner.os }}-${{ hashFiles('**/*.yml') }}
           restore-keys: |
             boost-1.90.0-github-${{ runner.os }}-
 
@@ -95,11 +95,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create release tagged as 'boostO' (idempotent)
           gh release create boostO \
             --title "Boost 1.90.0 Full Multi-Platform Build" \
-            --notes "Automated complete build of Boost 1.90.0 sourced from official GitHub archive. Includes all library variants and OpenSSL dependencies for full Boost.Beast (HTTP/WebSocket/TLS) support. Archives contain ready-to-use include/ and lib/ directories." \
+            --notes "Automated complete build of Boost 1.90.0 from official GitHub archive tag boost-1.90.0. Includes all variants and OpenSSL for Boost.Beast TLS support." \
             || echo "Release tag 'boostO' already exists; uploading/updating asset."
-
-          # Upload or overwrite the platform-specific asset
           gh release upload boostO ~/$ARCHIVE --clobber
