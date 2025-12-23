@@ -18,8 +18,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     env:
-      BOOST_ROOT: ~/boost-boost-1.90.0
-      BOOST_INSTALL: ~/boost-install
+      BOOST_ROOT: /Users/runner/work/Ads/Ads/boost-boost-1.90.0
+      BOOST_INSTALL: /Users/runner/work/Ads/Ads/boost-install
 
     steps:
       - name: Checkout repository
@@ -38,8 +38,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/boost-boost-1.90.0
-            ~/boost-install
+            /Users/runner/work/Ads/Ads/boost-boost-1.90.0
+            /Users/runner/work/Ads/Ads/boost-install
           key: boost-1.90.0-github-${{ runner.os }}-${{ hashFiles('**/*.yml') }}
           restore-keys: |
             boost-1.90.0-github-${{ runner.os }}-
