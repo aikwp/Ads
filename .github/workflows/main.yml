@@ -18,8 +18,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     env:
-      BOOST_ROOT: /Users/runner/work/Ads/Ads/boost-boost-1.90.0
-      BOOST_INSTALL: /Users/runner/work/Ads/Ads/boost-install
+      BOOST_SOURCE: ${{ github.workspace }}/boost-source/boost-boost-1.90.0
+      BOOST_INSTALL: ${{ github.workspace }}/boost-install
 
     steps:
       - name: Checkout repository
@@ -38,8 +38,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            /Users/runner/work/Ads/Ads/boost-boost-1.90.0
-            /Users/runner/work/Ads/Ads/boost-install
+            ${{ github.workspace }}/boost-source
+            ${{ github.workspace }}/boost-install
           key: boost-1.90.0-github-${{ runner.os }}-${{ hashFiles('**/*.yml') }}
           restore-keys: |
             boost-1.90.0-github-${{ runner.os }}-
@@ -48,47 +48,47 @@ jobs:
         if: steps.cache-boost.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          cd /Users/runner/work/Ads/Ads/
+          mkdir -p ${{ github.workspace }}/boost-source
+          cd ${{ github.workspace }}/boost-source
           curl -L -o boost-1.90.0.zip https://github.com/boostorg/boost/archive/refs/tags/boost-1.90.0.zip
           unzip -q boost-1.90.0.zip
-          mkdir -p $BOOST_INSTALL
+          mkdir -p ${{ env.BOOST_INSTALL }}
 
       - name: Bootstrap Boost (Unix-like platforms)
         if: runner.os != 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
-        working-directory: ${{ env.BOOST_ROOT }}
+        working-directory: ${{ env.BOOST_SOURCE }}
         shell: bash
         run: |
-          echo "Current directory: $(pwd)"
-          ls -la bootstrap.sh || exit 1
-          ./bootstrap.sh --prefix=$BOOST_INSTALL --with-libraries=all
+          echo "Working directory: $(pwd)"
+          ./bootstrap.sh --prefix=${{ env.BOOST_INSTALL }} --with-libraries=all
 
       - name: Build and install Boost (Unix-like platforms)
         if: runner.os != 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
-        working-directory: ${{ env.BOOST_ROOT }}
+        working-directory: ${{ env.BOOST_SOURCE }}
         shell: bash
         run: |
-          JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.logicalcpu || echo 2)
-          ./b2 install -j$JOBS threading=multi variant=release,debug link=shared,static runtime-link=shared --prefix=$BOOST_INSTALL
+          JOBS=$(nproc || sysctl -n hw.logicalcpu || echo 2)
+          ./b2 install -j$JOBS threading=multi variant=release,debug link=shared,static runtime-link=shared
 
       - name: Bootstrap and build Boost (Windows)
         if: runner.os == 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
-        working-directory: ~\boost-boost-1.90.0
+        working-directory: ${{ env.BOOST_SOURCE }}
         shell: powershell
         run: |
           .\bootstrap.bat
           $jobs = $env:NUMBER_OF_PROCESSORS
-          .\b2.exe install -j$jobs --prefix=~\boost-install --build-type=complete threading=multi
+          .\b2.exe install -j$jobs --prefix="${{ env.BOOST_INSTALL }}" --build-type=complete threading=multi
 
       - name: Verify installation
         shell: bash
         run: |
-          ls -R $BOOST_INSTALL/include/boost | head -20
-          ls $BOOST_INSTALL/lib | head -10 || true
+          ls -R ${{ env.BOOST_INSTALL }}/include/boost | head -20
+          ls ${{ env.BOOST_INSTALL }}/lib | head -10 || true
 
       - name: Package installation archive
         shell: bash
         run: |
-          cd ~
+          cd ${{ github.workspace }}
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             Compress-Archive -Path boost-install -DestinationPath boost-1.90.0-windows.zip
             echo "ARCHIVE=boost-1.90.0-windows.zip" >> $GITHUB_ENV
@@ -105,4 +105,4 @@ jobs:
             --title "Boost 1.90.0 Full Multi-Platform Build" \
             --notes "Automated complete build of Boost 1.90.0 from official GitHub archive. Includes all variants and OpenSSL for Boost.Beast TLS support." \
             || echo "Release 'boostO' exists; proceeding to upload."
-          gh release upload boostO ~/$ARCHIVE --clobber
+          gh release upload boostO ${{ github.workspace }}/$ARCHIVE --clobber
