@@ -1,4 +1,4 @@
-name: Direct Build and Release Full Boost 1.90.0 (Tag: boostO)
+name: Build and Release
 
 on:
   workflow_dispatch:
