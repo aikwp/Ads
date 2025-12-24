@@ -18,7 +18,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     env:
-      BOOST_SOURCE: ${{ github.workspace }}/boost/boost_1_90_0
+      BOOST_SOURCE: ${{ github.workspace }}/boost_1_90_0
       BOOST_INSTALL: ${{ github.workspace }}/boost-install
 
     steps:
@@ -38,7 +38,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}/boost
+            ${{ github.workspace }}/boost_1_90_0
             ${{ github.workspace }}/boost-install
           key: boost-1.90.0-official-${{ runner.os }}-${{ hashFiles('**/*.yml') }}
           restore-keys: |
@@ -48,8 +48,7 @@ jobs:
         if: steps.cache-boost.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          mkdir -p ${{ github.workspace }}/boost
-          cd ${{ github.workspace }}/boost
+          cd ${{ github.workspace }}
           curl -L -o boost_1_90_0.tar.gz https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.gz
           tar -xzf boost_1_90_0.tar.gz
           mkdir -p ${{ env.BOOST_INSTALL }}
@@ -82,17 +81,23 @@ jobs:
       - name: Verify installation
         shell: bash
         run: |
-          echo "Boost version header:"
-          cat ${{ env.BOOST_INSTALL }}/include/boost/version.hpp | grep BOOST_LIB_VERSION
+          echo "=== Boost Installation Verification ==="
+          echo "Install prefix: ${{ env.BOOST_INSTALL }}"
           echo ""
-          echo "Top-level Boost headers/directories (sample):"
+          echo "Boost version:"
+          grep BOOST_LIB_VERSION ${{ env.BOOST_INSTALL }}/include/boost/version.hpp || echo "Version header not found"
+          echo ""
+          echo "Top-level contents (non-recursive sample):"
           ls -l ${{ env.BOOST_INSTALL }}/include/boost | head -20
           echo ""
-          echo "Confirming Boost.Beast presence:"
-          ls ${{ env.BOOST_INSTALL }}/include/boost/beast/version.hpp && echo "Boost.Beast headers installed successfully"
+          echo "Confirming key libraries:"
+          [ -d ${{ env.BOOST_INSTALL }}/include/boost/asio ] && echo "Boost.Asio: PRESENT"
+          [ -d ${{ env.BOOST_INSTALL }}/include/boost/beast ] && echo "Boost.Beast: PRESENT"
+          [ -f ${{ env.BOOST_INSTALL }}/include/boost/beast/version.hpp ] && echo "Boost.Beast version header: PRESENT"
           echo ""
           echo "Sample compiled libraries (if any):"
-          ls ${{ env.BOOST_INSTALL }}/lib | head -10 || echo "No libraries (expected for header-only subsets)"
+          find ${{ env.BOOST_INSTALL }}/lib -type f -name "*.a" -o -name "*.so" -o -name "*.dll" | head -10 || echo "No compiled libraries found (expected for header-only focused builds)"
+          echo "Verification complete."
       - name: Package installation archive
         shell: bash
         run: |
@@ -111,6 +116,6 @@ jobs:
         run: |
           gh release create boostO \
             --title "Boost 1.90.0 Full Multi-Platform Build" \
-            --notes "Automated complete build of Boost 1.90.0 from official distribution archive. Includes all variants and OpenSSL for Boost.Beast TLS support." \
-            || echo "Release 'boostO' exists; proceeding to upload."
+            --notes "Automated complete build of Boost 1.90.0 from official archive. Full variants with OpenSSL for Boost.Beast TLS." \
+            || echo "Release 'boostO' exists; uploading asset."
           gh release upload boostO ${{ github.workspace }}/$ARCHIVE --clobber
