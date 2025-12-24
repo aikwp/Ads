@@ -18,7 +18,6 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     env:
-      BOOST_SOURCE: ${{ github.workspace }}/boost_1_90_0
       BOOST_INSTALL: ${{ github.workspace }}/boost-install
 
     steps:
@@ -33,60 +32,50 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install openssl@3 zlib bzip2
 
-      - name: Cache Boost source and installation
-        id: cache-boost
+      - name: Cache Boost installation (Unix-like)
+        if: runner.os != 'Windows'
+        id: cache-boost-unix
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/boost_1_90_0
-            ${{ github.workspace }}/boost-install
+          path: ${{ env.BOOST_INSTALL }}
           key: boost-1.90.0-official-${{ runner.os }}-${{ hashFiles('**/*.yml') }}
           restore-keys: |
             boost-1.90.0-official-${{ runner.os }}-
 
-      - name: Download and extract official Boost 1.90.0 tar.gz (Unix-like)
-        if: runner.os != 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
+      - name: Cache Boost installation (Windows)
+        if: runner.os == 'Windows'
+        id: cache-boost-windows
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BOOST_INSTALL }}
+          key: boost-1.90.0-prebuilt-msvc14.3-${{ runner.os }}-${{ hashFiles('**/*.yml') }}
+          restore-keys: |
+            boost-1.90.0-prebuilt-msvc14.3-${{ runner.os }}-
+
+      - name: Download and extract source + build Boost (Unix-like)
+        if: runner.os != 'Windows' && steps.cache-boost-unix.outputs.cache-hit != 'true'
+        env:
+          BOOST_SOURCE: ${{ github.workspace }}/boost_1_90_0
         shell: bash
         run: |
           cd ${{ github.workspace }}
           curl -L -o boost_1_90_0.tar.gz https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.gz
           tar -xzf boost_1_90_0.tar.gz
           mkdir -p ${{ env.BOOST_INSTALL }}
-
-      - name: Download and extract official Boost 1.90.0 tar.gz (Windows)
-        if: runner.os == 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
-        shell: powershell
-        run: |
-          Set-Location ${{ github.workspace }}
-          Invoke-WebRequest -Uri https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.gz -OutFile boost_1_90_0.tar.gz
-          tar -xzf boost_1_90_0.tar.gz
-          New-Item -ItemType Directory -Path ${{ env.BOOST_INSTALL }} -Force
-
-      - name: Bootstrap Boost (Unix-like platforms)
-        if: runner.os != 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
-        working-directory: ${{ env.BOOST_SOURCE }}
-        shell: bash
-        run: |
-          echo "Working directory: $(pwd)"
+          cd $BOOST_SOURCE
           ./bootstrap.sh --prefix=${{ env.BOOST_INSTALL }} --with-libraries=all
-
-      - name: Build and install Boost (Unix-like platforms)
-        if: runner.os != 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
-        working-directory: ${{ env.BOOST_SOURCE }}
-        shell: bash
-        run: |
           JOBS=$(nproc || sysctl -n hw.logicalcpu || echo 2)
           ./b2 install -j$JOBS threading=multi variant=release,debug link=shared,static
 
-      - name: Bootstrap and build Boost (Windows)
-        if: runner.os == 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
-        working-directory: ${{ env.BOOST_SOURCE }}
+      - name: Download and install prebuilt Boost (Windows)
+        if: runner.os == 'Windows' && steps.cache-boost-windows.outputs.cache-hit != 'true'
         shell: powershell
         run: |
-          Write-Output "Working directory: $(Get-Location)"
-          & .\bootstrap.bat
-          $jobs = $env:NUMBER_OF_PROCESSORS
-          & .\b2.exe install -j$jobs --prefix="${{ env.BOOST_INSTALL }}" --build-type=complete threading=multi
+          Invoke-WebRequest -Uri https://archives.boost.io/release/1.90.0/binaries/boost_1_90_0-msvc-14.3-64.exe -OutFile boost-installer.exe
+          # Silent install to workspace subdirectory (no admin required)
+          ./boost-installer.exe /SILENT /DIR="${{ env.BOOST_INSTALL }}"
+          # Verify extraction
+          if (-Not (Test-Path "${{ env.BOOST_INSTALL }}\include\boost\beast.hpp")) { exit 1 }
 
       - name: Verify installation
         shell: bash
@@ -98,7 +87,7 @@ jobs:
           grep BOOST_LIB_VERSION ${{ env.BOOST_INSTALL }}/include/boost/version.hpp || echo "Version header not found"
           echo ""
           echo "Top-level contents (non-recursive sample):"
-          ls -l ${{ env.BOOST_INSTALL }}/include/boost | head -20 || true
+          ls -l ${{ env.BOOST_INSTALL }}/include/boost | head -20
           echo ""
           echo "Confirming key libraries:"
           [ -d ${{ env.BOOST_INSTALL }}/include/boost/asio ] && echo "Boost.Asio: PRESENT"
@@ -127,6 +116,6 @@ jobs:
         run: |
           gh release create boostO \
             --title "Boost 1.90.0 Full Multi-Platform Build" \
-            --notes "Automated complete build of Boost 1.90.0 from official archive. Full variants with OpenSSL for Boost.Beast TLS support." \
+            --notes "Automated build: Source-compiled on Unix-like (with .a static libs); Prebuilt MSVC 14.3 installer on Windows. Full Boost.Beast TLS support." \
             || echo "Release 'boostO' exists; uploading asset."
           gh release upload boostO ${{ github.workspace }}/$ARCHIVE --clobber
