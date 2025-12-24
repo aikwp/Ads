@@ -87,7 +87,7 @@ jobs:
           grep BOOST_LIB_VERSION ${{ env.BOOST_INSTALL }}/include/boost/version.hpp || echo "Version header not found"
           echo ""
           echo "Top-level contents (non-recursive sample):"
-          ls -l ${{ env.BOOST_INSTALL }}/include/boost | head -20
+          ls -l ${{ env.BOOST_INSTALL }}/include/boost | head -20 || true
           echo ""
           echo "Confirming key libraries:"
           [ -d ${{ env.BOOST_INSTALL }}/include/boost/asio ] && echo "Boost.Asio: PRESENT"
