@@ -44,14 +44,23 @@ jobs:
           restore-keys: |
             boost-1.90.0-official-${{ runner.os }}-
 
-      - name: Download and extract official Boost 1.90.0 tar.gz
-        if: steps.cache-boost.outputs.cache-hit != 'true'
+      - name: Download and extract official Boost 1.90.0 tar.gz (Unix-like)
+        if: runner.os != 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
         shell: bash
         run: |
           cd ${{ github.workspace }}
           curl -L -o boost_1_90_0.tar.gz https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.gz
           tar -xzf boost_1_90_0.tar.gz
           mkdir -p ${{ env.BOOST_INSTALL }}
+
+      - name: Download and extract official Boost 1.90.0 tar.gz (Windows)
+        if: runner.os == 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          Set-Location ${{ github.workspace }}
+          Invoke-WebRequest -Uri https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.gz -OutFile boost_1_90_0.tar.gz
+          tar -xzf boost_1_90_0.tar.gz
+          New-Item -ItemType Directory -Path ${{ env.BOOST_INSTALL }} -Force
 
       - name: Bootstrap Boost (Unix-like platforms)
         if: runner.os != 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
@@ -74,6 +83,7 @@ jobs:
         working-directory: ${{ env.BOOST_SOURCE }}
         shell: powershell
         run: |
+          Write-Output "Working directory: $(Get-Location)"
           & .\bootstrap.bat
           $jobs = $env:NUMBER_OF_PROCESSORS
           & .\b2.exe install -j$jobs --prefix="${{ env.BOOST_INSTALL }}" --build-type=complete threading=multi
@@ -88,15 +98,15 @@ jobs:
           grep BOOST_LIB_VERSION ${{ env.BOOST_INSTALL }}/include/boost/version.hpp || echo "Version header not found"
           echo ""
           echo "Top-level contents (non-recursive sample):"
-          ls -l ${{ env.BOOST_INSTALL }}/include/boost | head -20 || true
-          echo "" || true
-          echo "Confirming key libraries:" || true
-          [ -d ${{ env.BOOST_INSTALL }}/include/boost/asio ] && echo "Boost.Asio: PRESENT" || true
-          [ -d ${{ env.BOOST_INSTALL }}/include/boost/beast ] && echo "Boost.Beast: PRESENT" || true
-          [ -f ${{ env.BOOST_INSTALL }}/include/boost/beast/version.hpp ] && echo "Boost.Beast version header: PRESENT" || true
+          ls -l ${{ env.BOOST_INSTALL }}/include/boost | head -20
+          echo ""
+          echo "Confirming key libraries:"
+          [ -d ${{ env.BOOST_INSTALL }}/include/boost/asio ] && echo "Boost.Asio: PRESENT"
+          [ -d ${{ env.BOOST_INSTALL }}/include/boost/beast ] && echo "Boost.Beast: PRESENT"
+          [ -f ${{ env.BOOST_INSTALL }}/include/boost/beast/version.hpp ] && echo "Boost.Beast version header: PRESENT"
           echo ""
           echo "Sample compiled libraries:"
-          find ${{ env.BOOST_INSTALL }}/lib -type f -name "*.lib" -o -name "*.dll" | head -10 || echo "No compiled libraries (variant-dependent)" || true
+          find ${{ env.BOOST_INSTALL }}/lib -type f \( -name "*.lib" -o -name "*.dll" -o -name "*.a" -o -name "*.so" \) | head -10 || echo "No compiled libraries (variant-dependent)"
           echo "Verification complete."
 
       - name: Package installation archive
