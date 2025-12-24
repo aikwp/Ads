@@ -18,7 +18,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     env:
-      BOOST_SOURCE: ${{ github.workspace }}/boost-source/boost_1_90_0
+      BOOST_SOURCE: ${{ github.workspace }}/boost/boost_1_90_0
       BOOST_INSTALL: ${{ github.workspace }}/boost-install
 
     steps:
@@ -38,7 +38,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}/boost-source
+            ${{ github.workspace }}/boost
             ${{ github.workspace }}/boost-install
           key: boost-1.90.0-official-${{ runner.os }}-${{ hashFiles('**/*.yml') }}
           restore-keys: |
@@ -48,8 +48,8 @@ jobs:
         if: steps.cache-boost.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          mkdir -p ${{ github.workspace }}/boost-source
-          cd ${{ github.workspace }}/boost-source
+          mkdir -p ${{ github.workspace }}/boost
+          cd ${{ github.workspace }}/boost
           curl -L -o boost_1_90_0.tar.gz https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.gz
           tar -xzf boost_1_90_0.tar.gz
           mkdir -p ${{ env.BOOST_INSTALL }}
@@ -73,18 +73,26 @@ jobs:
       - name: Bootstrap and build Boost (Windows)
         if: runner.os == 'Windows' && steps.cache-boost.outputs.cache-hit != 'true'
         working-directory: ${{ env.BOOST_SOURCE }}
-        shell: powershell
+        shell: cmd
         run: |
-          .\bootstrap.bat
-          $jobs = $env:NUMBER_OF_PROCESSORS
-          .\b2.exe install -j$jobs --prefix="${{ env.BOOST_INSTALL }}" --build-type=complete threading=multi
+          bootstrap.bat
+          set JOBS=%NUMBER_OF_PROCESSORS%
+          b2.exe install -j%JOBS% --prefix="%BOOST_INSTALL%" --build-type=complete threading=multi
 
       - name: Verify installation
         shell: bash
         run: |
-          ls -R ${{ env.BOOST_INSTALL }}/include/boost | head -20
-          ls ${{ env.BOOST_INSTALL }}/lib | head -10 || true
-
+          echo "Boost version header:"
+          cat ${{ env.BOOST_INSTALL }}/include/boost/version.hpp | grep BOOST_LIB_VERSION
+          echo ""
+          echo "Top-level Boost headers/directories (sample):"
+          ls -l ${{ env.BOOST_INSTALL }}/include/boost | head -20
+          echo ""
+          echo "Confirming Boost.Beast presence:"
+          ls ${{ env.BOOST_INSTALL }}/include/boost/beast/version.hpp && echo "Boost.Beast headers installed successfully"
+          echo ""
+          echo "Sample compiled libraries (if any):"
+          ls ${{ env.BOOST_INSTALL }}/lib | head -10 || echo "No libraries (expected for header-only subsets)"
       - name: Package installation archive
         shell: bash
         run: |
