@@ -1,63 +1,54 @@
-name: Build Boost 1.90.0 for Termux (.deb)
+name: Build Boost 1.90.0 for Termux (.deb) on macOS
 
 on:
   workflow_dispatch:
   push:
-    branches: [ xer ]
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: macos-15
 
     env:
       BOOST_VERSION: 1.90.0
       ANDROID_API: 35
+      NDK_VERSION: 27.3.13750724
       TERMUX_PREFIX: /data/data/com.termux/files/usr
       ANDROID_HOME: ${{ github.workspace }}/android-sdk
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-      NDK_VERSION: 27.3.13750724
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install host deps
+      - name: Install host dependencies
         run: |
-          sudo apt update
-          sudo apt install -y \
-            build-essential \
-            python3 \
-            wget \
-            unzip \
-            cmake \
-            dpkg-dev \
-            fakeroot \
-            openjdk-17-jdk
-      - name: Set Java 17
+          brew update
+          brew install cmake wget ninja
+
+      - name: Check Java
         run: |
-          sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
-          sudo update-alternatives --set javac /usr/lib/jvm/java-17-openjdk-amd64/bin/javac
           java -version
-          
+
       - name: Download Android commandline tools
         run: |
-          mkdir -p $ANDROID_HOME
-          cd $ANDROID_HOME
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip commandlinetools-linux-11076708_latest.zip
+          mkdir -p "$ANDROID_HOME"
+          cd "$ANDROID_HOME"
+          wget https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
+          unzip commandlinetools-mac-11076708_latest.zip
 
-          rm -rf cmdline-tools/latest
+          rm -rf cmdline-tools/latest || true
           mv cmdline-tools cmdline-tools-tmp
           mkdir -p cmdline-tools
           mv cmdline-tools-tmp cmdline-tools/latest
+
       - name: Install SDK + NDK via sdkmanager
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME \
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;27.3.13750724"
-            
 
       - name: Download Boost 1.90.0
         run: |
@@ -73,14 +64,14 @@ jobs:
 
       - name: Create toolchain config
         run: |
-          NDK=$ANDROID_HOME/ndk/${NDK_VERSION}
+          NDK="$ANDROID_HOME/ndk/${NDK_VERSION}"
           cat > boost/user-config.jam <<EOF
           using clang : android
-            : $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API}-clang++
+            : $NDK/toolchains/llvm/prebuilt/darwin-arm64/bin/aarch64-linux-android${ANDROID_API}-clang++
             :
-            <archiver>$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-            <ranlib>$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
-            <strip>$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+            <archiver>$NDK/toolchains/llvm/prebuilt/darwin-arm64/bin/llvm-ar
+            <ranlib>$NDK/toolchains/llvm/prebuilt/darwin-arm64/bin/llvm-ranlib
+            <strip>$NDK/toolchains/llvm/prebuilt/darwin-arm64/bin/llvm-strip
             ;
           EOF
 
@@ -88,7 +79,7 @@ jobs:
         run: |
           cd boost
           ./b2 \
-            -j$(nproc) \
+            -j$(sysctl -n hw.ncpu) \
             toolset=clang-android \
             target-os=android \
             architecture=arm \
@@ -101,10 +92,10 @@ jobs:
             variant=release \
             cxxflags="-std=c++23 -O3 -fPIC" \
             --user-config=./user-config.jam \
-            --prefix=$GITHUB_WORKSPACE/pkgroot${TERMUX_PREFIX} \
+            --prefix="$GITHUB_WORKSPACE/pkgroot${TERMUX_PREFIX}" \
             install
 
-      - name: Create DEBIAN control
+      - name: Create DEBIAN control file
         run: |
           mkdir -p pkgroot/DEBIAN
 
@@ -121,11 +112,11 @@ jobs:
 
       - name: Strip binaries
         run: |
-          STRIP=$ANDROID_HOME/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-          find pkgroot -name "*.so*" -exec $STRIP {} \; || true
-          find pkgroot -name "*.a" -exec $STRIP -g {} \; || true
+          STRIP="$ANDROID_HOME/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/darwin-arm64/bin/llvm-strip"
+          find pkgroot -name "*.so*" -exec "$STRIP" {} \; || true
+          find pkgroot -name "*.a" -exec "$STRIP" -g {} \; || true
 
-      - name: Build .deb
+      - name: Build .deb package
         run: |
           dpkg-deb --build pkgroot boost-full-termux-aarch64.deb
 
