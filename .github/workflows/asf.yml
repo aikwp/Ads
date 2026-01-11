@@ -3,7 +3,7 @@ name: Build Boost 1.90.0 for Termux (.deb) on macOS
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ xer ]
 
 jobs:
   build:
