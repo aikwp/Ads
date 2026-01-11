@@ -33,6 +33,12 @@ jobs:
             dpkg-dev \
             fakeroot \
             openjdk-17-jdk
+      - name: Set Java 17
+        run: |
+          sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
+          sudo update-alternatives --set javac /usr/lib/jvm/java-17-openjdk-amd64/bin/javac
+          java -version
+          
 
       - name: Download Android commandline tools
         run: |
