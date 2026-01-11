@@ -1,0 +1,128 @@
+name: Build Boost 1.90.0 for Termux (.deb)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      BOOST_VERSION: 1.90.0
+      ANDROID_API: 35
+      TERMUX_PREFIX: /data/data/com.termux/files/usr
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      NDK_VERSION: 27.3.13750724
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host deps
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential \
+            python3 \
+            wget \
+            unzip \
+            cmake \
+            dpkg-dev \
+            fakeroot \
+            openjdk-17-jdk
+
+      - name: Download Android commandline tools
+        run: |
+          mkdir -p $ANDROID_HOME/cmdline-tools
+          cd $ANDROID_HOME
+          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip commandlinetools-linux-*.zip
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/* cmdline-tools/latest/ || true
+
+      - name: Install SDK + NDK via sdkmanager
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.3.13750724"
+
+      - name: Download Boost 1.90.0
+        run: |
+          BOOST_VER=${BOOST_VERSION//./_}
+          wget https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source/boost_${BOOST_VER}.tar.gz
+          tar xf boost_${BOOST_VER}.tar.gz
+          mv boost_${BOOST_VER} boost
+
+      - name: Bootstrap Boost
+        run: |
+          cd boost
+          ./bootstrap.sh
+
+      - name: Create toolchain config
+        run: |
+          NDK=$ANDROID_HOME/ndk/${NDK_VERSION}
+          cat > boost/user-config.jam <<EOF
+          using clang : android
+            : $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API}-clang++
+            :
+            <archiver>$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+            <ranlib>$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+            <strip>$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+            ;
+          EOF
+
+      - name: Build FULL Boost into Termux filesystem layout
+        run: |
+          cd boost
+          ./b2 \
+            -j$(nproc) \
+            toolset=clang-android \
+            target-os=android \
+            architecture=arm \
+            address-model=64 \
+            binary-format=elf \
+            abi=aapcs \
+            threading=multi \
+            link=static,shared \
+            runtime-link=static \
+            variant=release \
+            cxxflags="-std=c++23 -O3 -fPIC" \
+            --user-config=./user-config.jam \
+            --prefix=$GITHUB_WORKSPACE/pkgroot${TERMUX_PREFIX} \
+            install
+
+      - name: Create DEBIAN control
+        run: |
+          mkdir -p pkgroot/DEBIAN
+
+          cat > pkgroot/DEBIAN/control <<EOF
+          Package: boost-full
+          Version: 1.90.0
+          Section: devel
+          Priority: optional
+          Architecture: aarch64
+          Maintainer: zrsx <zrsx@termux>
+          Description: Full Boost 1.90.0 C++ Libraries for Termux (Android aarch64)
+           Built using Android NDK 27.3 via SDK Manager. Installs into Termux prefix.
+          EOF
+
+      - name: Strip binaries
+        run: |
+          STRIP=$ANDROID_HOME/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+          find pkgroot -name "*.so*" -exec $STRIP {} \; || true
+          find pkgroot -name "*.a" -exec $STRIP -g {} \; || true
+
+      - name: Build .deb
+        run: |
+          dpkg-deb --build pkgroot boost-full-termux-aarch64.deb
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: boost-1.90.0-termux-aarch64-deb
+          path: boost-full-termux-aarch64.deb
