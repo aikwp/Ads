@@ -39,25 +39,25 @@ jobs:
           sudo update-alternatives --set javac /usr/lib/jvm/java-17-openjdk-amd64/bin/javac
           java -version
           
-
       - name: Download Android commandline tools
         run: |
-          mkdir -p $ANDROID_HOME/cmdline-tools
+          mkdir -p $ANDROID_HOME
           cd $ANDROID_HOME
           wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip commandlinetools-linux-11076708_latest.zip
-          rm -rf cmdline-tools/latest
-          mkdir -p cmdline-tools/latest
-          mv cmdline-tools/*/* cmdline-tools/latest/
 
+          rm -rf cmdline-tools/latest
+          mv cmdline-tools cmdline-tools-tmp
+          mkdir -p cmdline-tools
+          mv cmdline-tools-tmp cmdline-tools/latest
       - name: Install SDK + NDK via sdkmanager
         run: |
-          yes | sdkmanager --sdk_root=$ANDROID_HOME \
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;27.3.13750724"
-  
+            
 
       - name: Download Boost 1.90.0
         run: |
